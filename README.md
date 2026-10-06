@@ -1,28 +1,6 @@
 # Spotifast
 
-> **This fork plays Apple Music on macOS.** On a Mac, Spotifast drives
-> Music.app instead of signing in to Spotify: your library, playlists
-> (folders included), favourites, play counts and artwork come from
-> Music.app, and playback runs there. Apple Music audio is FairPlay
-> protected, so no third-party app can stream it itself.
->
-> - No sign-in. The first launch asks to control Music
->   (System Settings → Privacy & Security → Automation).
-> - Albums, artists, Liked Songs and song lists play from a playlist named
->   **Spotifast Queue**, which Spotifast creates and refills. Adding to the
->   queue works while that playlist is playing. Music.app's own Up Next
->   can't be scripted.
-> - Home is built from your library: recently played, most played songs
->   and artists, and songs by your top artists you've hardly played.
-> - Not available: catalogue search beyond your library, radio, podcasts,
->   playlist covers and reordering, the visualizer and EQ (the audio never
->   passes through Spotifast).
-> - `SPOTIFAST_BACKEND=spotify` runs the original Spotify backend. Linux
->   and Windows builds are unchanged.
->
-> The code lives in `src/apple_music/`. Catalogue search through the
-> Apple Music API would need an Apple Developer account and is not built
-> yet.
+> **Note:** This is an incomplete fork of [crmne/spotifast](https://github.com/crmne/spotifast) that adds Apple Music support on macOS (through Music.app).
 
 **Spotify, native and fast.** Spotifast is a Spotify client written in
 Rust with [egui](https://github.com/emilk/egui). It plays music through
