@@ -26,9 +26,12 @@ fn decoded_and_texture_bytes(width: usize, height: usize) -> usize {
 }
 
 /// What this loader answers for. egui offers it every URI, and artwork that
-/// is not fetched over the network belongs to another loader.
-fn is_http(uri: &str) -> bool {
-    uri.starts_with("https://") || uri.starts_with("http://")
+/// is neither fetched over the network nor exported from Music.app belongs
+/// to another loader.
+fn is_fetched(uri: &str) -> bool {
+    uri.starts_with("https://")
+        || uri.starts_with("http://")
+        || crate::apple_music::library::art_track(uri).is_some()
 }
 
 enum Entry {
@@ -147,7 +150,7 @@ impl ArtLoader {
     /// Artwork already held, already on its way, or addressed by a scheme
     /// this loader does not answer for is left alone.
     pub fn prefetch(&self, ctx: &egui::Context, url: &str) -> bool {
-        if !is_http(url) {
+        if !is_fetched(url) {
             return false;
         }
         let mut entries = self.inner.entries.lock().unwrap_or_else(|p| p.into_inner());
@@ -253,6 +256,26 @@ impl Inner {
         .flatten();
         let bytes: Arc<[u8]> = match cached {
             Some(bytes) if !bytes.is_empty() => Arc::from(bytes),
+            // Music.app writes the picture into the cache file itself.
+            _ if let Some(track) = crate::apple_music::library::art_track(url) => {
+                let track = track.to_string();
+                let bytes = tokio::task::spawn_blocking(move || {
+                    let temporary = path.with_extension("part");
+                    if !crate::apple_music::bridge::artwork(&track, &temporary)? {
+                        return Err("this song has no artwork".to_string());
+                    }
+                    let bytes = std::fs::read(&temporary).map_err(|error| error.to_string())?;
+                    if bytes.len() > MAX_ART_BYTES {
+                        let _ = std::fs::remove_file(&temporary);
+                        return Err("artwork is too large".to_string());
+                    }
+                    let _ = std::fs::rename(&temporary, &path);
+                    Ok(bytes)
+                })
+                .await
+                .map_err(|error| error.to_string())??;
+                Arc::from(bytes)
+            }
             _ => {
                 let response = self
                     .http
@@ -327,7 +350,7 @@ impl BytesLoader for ArtLoader {
     }
 
     fn load(&self, ctx: &egui::Context, uri: &str) -> BytesLoadResult {
-        if !is_http(uri) {
+        if !is_fetched(uri) {
             return Err(LoadError::NotSupported);
         }
         let mut entries = self.inner.entries.lock().unwrap_or_else(|p| p.into_inner());
@@ -480,7 +503,7 @@ impl LyricsBackdrop {
         }
         let uri = uri?;
         let due = self.retry_at.is_none_or(|at| Instant::now() >= at);
-        if !self.requested && due && is_http(uri) {
+        if !self.requested && due && is_fetched(uri) {
             self.requested = true;
             self.retry_at = None;
             let (tx, rx) = std::sync::mpsc::channel();

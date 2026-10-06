@@ -918,6 +918,9 @@ impl Backend {
             .enable_all()
             .build()
             .expect("unable to start the async runtime");
+        // Apple Music has no Spotify sign-in to restore.
+        let apple_music = crate::apple_music::enabled();
+        let restore_sign_in = restore_sign_in && !apple_music;
         let http = if restore_sign_in {
             Http::unavailable("Restoring proxy settings".into())
         } else {
@@ -949,7 +952,12 @@ impl Backend {
                         worker_commands,
                         waker,
                     );
-                    if restore_sign_in {
+                    if apple_music {
+                        worker.apple = Some(crate::apple_music::AppleMusic::start(
+                            worker.events.clone(),
+                            worker.waker.clone(),
+                        ));
+                    } else if restore_sign_in {
                         worker.restore_session();
                     }
                     worker.run(command_rx).await;
@@ -1367,6 +1375,9 @@ struct Worker {
     resume: Option<PlaybackResume>,
     /// A pickup in flight: the load to repeat and how often it was tried.
     resume_verify: Option<(PlaybackResume, u8)>,
+    /// Music.app in place of Spotify: answers sign-in, Web API, playback
+    /// and Connect commands before the Spotify handling below sees them.
+    apple: Option<crate::apple_music::AppleMusic>,
 }
 
 impl Worker {
@@ -1424,6 +1435,7 @@ impl Worker {
             reconnects: Vec::new(),
             resume: None,
             resume_verify: None,
+            apple: None,
         }
     }
 
@@ -1572,6 +1584,13 @@ impl Worker {
             self.waker.clone(),
         ));
         while let Some(command) = commands.recv().await {
+            let command = match &self.apple {
+                Some(apple) => match apple.handle(command) {
+                    Some(command) => command,
+                    None => continue,
+                },
+                None => command,
+            };
             if self.restoring_proxy
                 && !matches!(
                     &command,
